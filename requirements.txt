@@ -1,4 +1,4 @@
 flask
 firebase-admin
-tensorflow-cpu==2.15.0
+tensorflow-cpu==2.20.0
 numpy
