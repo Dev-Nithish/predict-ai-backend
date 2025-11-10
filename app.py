@@ -10,20 +10,21 @@ from tensorflow.keras.models import load_model
 # --------------------------------------------------------------------
 # 🔹 Firebase & Model Setup
 # --------------------------------------------------------------------
-cred = credentials.Certificate("serviceAccountKey.json")  # your Firebase key file
+cred = credentials.Certificate("serviceAccountKey.json")  # Your Firebase key file
 firebase_admin.initialize_app(cred, {
-    "databaseURL": "databaseURL": "https://predict-ai-91ed3-default-rtdb.firebaseio.com/"
-
+    "databaseURL": "https://predict-ai-91ed3-default-rtdb.firebaseio.com/"
 })
 
+# ✅ Load trained models
 pressure_model = load_model("pressure_sensor_model.h5", compile=False)
 limit_model = load_model("limit_switch_model.h5", compile=False)
 
+# ✅ Global state
 sensor_history = {}
 is_streaming = False
 
 # --------------------------------------------------------------------
-# 🔹 Streaming Logic (in background thread)
+# 🔹 Streaming Logic (runs in background thread)
 # --------------------------------------------------------------------
 def stream_data():
     global is_streaming
@@ -32,7 +33,7 @@ def stream_data():
     while is_streaming:
         timestamp = time.strftime("%H:%M:%S")
 
-        # generate random sensor values
+        # Generate random sensor values
         sensors = {
             "Pressure_Sensor_01_PS01": random.uniform(30, 80),
             "Pressure_Sensor_02_PS02": random.uniform(25, 90),
@@ -50,8 +51,11 @@ def stream_data():
 
         ref.update(data_to_send)
         print(f"✅ Sent data @ {timestamp}")
-        time.sleep(3)  # every 3 sec
+        time.sleep(3)  # every 3 seconds
 
+# --------------------------------------------------------------------
+# 🔹 Prediction Helper
+# --------------------------------------------------------------------
 def predict_next(sensor_id, current_value):
     try:
         if sensor_id not in sensor_history:
@@ -61,9 +65,11 @@ def predict_next(sensor_id, current_value):
         if len(sensor_history[sensor_id]) < 20:
             return current_value
 
+        # Keep last 20 readings
         sensor_history[sensor_id] = sensor_history[sensor_id][-20:]
         X_input = np.array(sensor_history[sensor_id]).reshape(1, 20, 1)
 
+        # Predict using correct model
         if "Pressure_Sensor" in sensor_id:
             pred = pressure_model.predict(X_input, verbose=0)[0][0]
         elif "Limit_Switch" in sensor_id:
@@ -73,7 +79,7 @@ def predict_next(sensor_id, current_value):
 
         return float(pred)
     except Exception as e:
-        print(f"⚠️ Prediction error: {e}")
+        print(f"⚠️ Prediction error for {sensor_id}: {e}")
         return current_value
 
 # --------------------------------------------------------------------
@@ -99,7 +105,10 @@ def stop_stream():
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"message": "Predict.AI backend running"})
+    return jsonify({"message": "Predict.AI backend running ✅"})
 
+# --------------------------------------------------------------------
+# 🔹 Run Flask Server
+# --------------------------------------------------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
