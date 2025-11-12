@@ -161,6 +161,16 @@ def predict_next(sensor_id, current_value):
 # --------------------------------------------------------------------
 # 🔹 Streaming Logic (runs in background thread)
 # --------------------------------------------------------------------
+def get_status(value: float) -> str:
+    """Classify pressure value into status ranges."""
+    if value < 4:
+        return "DANGER"
+    elif value <= 8:
+        return "NORMAL"
+    else:
+        return "CRITICAL"
+
+
 def stream_data():
     global is_streaming
     ref = db.reference("sensors")
@@ -170,19 +180,23 @@ def stream_data():
         try:
             timestamp = time.strftime("%H:%M:%S")
 
-            # Generate random sensor values
+            # 🔧 Generate realistic 0–10 range readings
+            base = 7 + math.sin(time.time() / 5) * 3 + random.uniform(-0.3, 0.3)
             sensors = {
-                "Pressure_Sensor_01_PS01": random.uniform(30, 80),
-                "Pressure_Sensor_02_PS02": random.uniform(25, 90),
-                "Limit_Switch_01_LS01": random.uniform(0, 1)
+                "Pressure_Sensor_01_PS01": round(max(0, min(10, base + random.uniform(-0.5, 0.5))), 2),
+                "Pressure_Sensor_02_PS02": round(max(0, min(10, base + random.uniform(-0.4, 0.4))), 2),
+                "Limit_Switch_01_LS01": round(random.choice([0.0, 1.0]) + random.uniform(-0.05, 0.05), 2)
             }
 
             data_to_send = {}
             for sid, val in sensors.items():
                 pred = predict_next(sid, val)
+                status = get_status(val)
                 data_to_send[sid] = {
-                    "pressure": val,
-                    "aiPrediction": pred,
+                    "actual": val,
+                    "predicted": pred,      # ✅ unified key name
+                    "status": status,
+                    "active": True,         # ✅ helps Angular detect deactivation
                     "timestamp": timestamp
                 }
 
