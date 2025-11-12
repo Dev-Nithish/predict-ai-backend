@@ -10,7 +10,14 @@ import json
 import h5py
 import tensorflow as tf
 import traceback
-from tensorflow.keras.models import model_from_json # Included for clarity of model_from_config use
+from tensorflow.keras.models import model_from_json
+from flask_cors import CORS  # ✅ import first
+
+# --------------------------------------------------------------------
+# 🔹 Initialize Flask App
+# --------------------------------------------------------------------
+app = Flask(__name__)
+CORS(app)  # ✅ Enable CORS immediately after creating the app
 
 # --------------------------------------------------------------------
 # 🔹 Global state & Model Placeholders
