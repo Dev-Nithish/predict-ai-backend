@@ -44,13 +44,12 @@ def safe_load_model(path):
             if model_json is None:
                 raise e
 
-            # Decode if bytes
             if isinstance(model_json, bytes):
                 model_json = model_json.decode("utf-8")
 
             model_config = json.loads(model_json)
 
-            #  Clean up invalid keys like time_major
+            # Clean invalid keys like time_major
             def clean_dict(d):
                 if isinstance(d, dict):
                     return {
@@ -65,14 +64,12 @@ def safe_load_model(path):
 
             cleaned_config = clean_dict(model_config)
 
-            #  Ensure top-level has 'class_name'
             if "class_name" not in cleaned_config:
                 cleaned_config = {
                     "class_name": "Sequential",
                     "config": cleaned_config.get("config", cleaned_config)
                 }
 
-            #  Register Sequential so Keras recognizes it
             get_custom_objects()['Sequential'] = Sequential
 
             try:
@@ -83,10 +80,6 @@ def safe_load_model(path):
                 print(f" Legacy deserialization failed: {inner_e}")
                 raise inner_e
 
-
-
-
-
 # ------------------------------------------------------------
 #  Load trained models & scalers safely
 # ------------------------------------------------------------
@@ -96,7 +89,10 @@ limit_model = safe_load_model("limit_switch_model_new.h5")
 pressure_scaler = joblib.load("pressure_scaler.pkl")
 limit_scaler = joblib.load("limit_switch_scaler.pkl")
 
-SEQ_LEN = 20
+# ------------------------------------------------------------
+#  YOUR REQUESTED UPDATE
+# ------------------------------------------------------------
+SEQ_LEN = 5
 PRED_INTERVAL = 5
 TOTAL_READINGS = 50
 sensor_history = {}
@@ -113,13 +109,13 @@ def get_status(value: float) -> str:
         return "NORMAL"
 
 # ------------------------------------------------------------
-#  Prediction helper
+#  UPDATED predict_next() — EXACTLY AS YOU REQUESTED
 # ------------------------------------------------------------
 def predict_next(sensor_id: str):
-    """Predict the *next* value (i+1) after every 5 readings."""
-    history = sensor_history[sensor_id]
+    history = sensor_history.get(sensor_id, [])
+
     if len(history) < SEQ_LEN:
-        return None  # wait for full sequence
+        return None
 
     # Predict only every 5th reading
     if len(history) % PRED_INTERVAL != 0:
@@ -127,19 +123,21 @@ def predict_next(sensor_id: str):
 
     arr = np.array(history[-SEQ_LEN:]).reshape(-1, 1)
 
-    if "Pressure_Sensor" in sensor_id:
+    # Pressure sensor prediction
+    if "Pressure_Sensor" in sensor_id and pressure_model:
         scaled = pressure_scaler.transform(arr)
         X_input = scaled.reshape(1, SEQ_LEN, 1)
         pred_scaled = pressure_model.predict(X_input, verbose=0)[0][0]
         pred_real = pressure_scaler.inverse_transform([[pred_scaled]])[0][0]
-        return float(max(0, min(15, pred_real)))
+        return float(max(0.0, min(10.0, pred_real)))
 
-    elif "Limit_Switch" in sensor_id:
+    # Limit switch prediction
+    elif "Limit_Switch" in sensor_id and limit_model:
         scaled = limit_scaler.transform(arr)
         X_input = scaled.reshape(1, SEQ_LEN, 1)
         pred_scaled = limit_model.predict(X_input, verbose=0)[0][0]
         pred_real = limit_scaler.inverse_transform([[pred_scaled]])[0][0]
-        return float(max(0, min(1, pred_real)))
+        return float(max(0.0, min(1.0, pred_real)))
 
     return None
 
@@ -181,7 +179,7 @@ def send_to_firebase(read_num):
 
         ref = db.reference(f"sensors/{sensor_id}")
 
-        #  Track alert counts
+        # Alert counter
         if "alert_counter" not in sensor_history:
             sensor_history["alert_counter"] = {}
 
@@ -206,7 +204,7 @@ def send_to_firebase(read_num):
             cfg_ref.set({"active": True})
 
 # ------------------------------------------------------------
-#  Main loop (run exactly 50 readings)
+#  Main loop
 # ------------------------------------------------------------
 if __name__ == "__main__":
     print(" Starting 50-reading data stream...\n")
