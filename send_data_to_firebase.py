@@ -1,8 +1,8 @@
 # ============================================================
-# 📡 send_data_to_firebase.py
-# ✅ Sends exactly 50 readings + LSTM predictions (at 5,10,15,...)
-# ✅ Adds alert counter (alert_count) when DANGER/CRITICAL occurs
-# ✅ Includes safe legacy loader for older Keras models
+#  send_data_to_firebase.py
+#  Sends exactly 50 readings + LSTM predictions (at 5,10,15,...)
+#  Adds alert counter (alert_count) when DANGER/CRITICAL occurs
+#  Includes safe legacy loader for older Keras models
 # ============================================================
 
 import time
@@ -16,7 +16,7 @@ import tensorflow as tf
 import h5py, json
 
 # ------------------------------------------------------------
-# 🔧 Firebase setup
+#  Firebase setup
 # ------------------------------------------------------------
 cred = credentials.Certificate(r"E:\Predict.Ai\ai-training\serviceAccountKey.json")
 firebase_admin.initialize_app(cred, {
@@ -24,36 +24,39 @@ firebase_admin.initialize_app(cred, {
 })
 
 # ------------------------------------------------------------
-# 🩵 Safe Legacy Model Loader
+#  Safe Legacy Model Loader
 # ------------------------------------------------------------
 def safe_load_model(path):
     import h5py, json, tensorflow as tf
+    from tensorflow.keras.models import Sequential, model_from_json
+    from tensorflow.keras.utils import get_custom_objects
 
     try:
-        print(f"⏳ Loading model: {path}")
+        print(f" Loading model: {path}")
         return tf.keras.models.load_model(path, compile=False)
-    except Exception as e:
-        print(f"⚠️ Direct load failed: {e}")
-        print("🔁 Attempting legacy deserialization...")
 
-        with h5py.File(path, 'r') as f:
-            model_json = f.attrs.get('model_config')
+    except Exception as e:
+        print(f" Direct load failed: {e}")
+        print(" Attempting legacy deserialization...")
+
+        with h5py.File(path, "r") as f:
+            model_json = f.attrs.get("model_config")
             if model_json is None:
                 raise e
 
-            # decode bytes if needed
+            # Decode if bytes
             if isinstance(model_json, bytes):
-                model_json = model_json.decode('utf-8')
+                model_json = model_json.decode("utf-8")
 
             model_config = json.loads(model_json)
 
-            # 🧹 recursive cleaner for unsupported keys
+            #  Clean up invalid keys like time_major
             def clean_dict(d):
                 if isinstance(d, dict):
                     return {
                         k: clean_dict(v)
                         for k, v in d.items()
-                        if k not in ["batch_shape", "class_name"]
+                        if k != "time_major"
                     }
                 elif isinstance(d, list):
                     return [clean_dict(v) for v in d]
@@ -62,19 +65,30 @@ def safe_load_model(path):
 
             cleaned_config = clean_dict(model_config)
 
-            # ✅ Use Keras Model reconstruction
-            from tensorflow.keras.models import model_from_config
+            #  Ensure top-level has 'class_name'
+            if "class_name" not in cleaned_config:
+                cleaned_config = {
+                    "class_name": "Sequential",
+                    "config": cleaned_config.get("config", cleaned_config)
+                }
+
+            #  Register Sequential so Keras recognizes it
+            get_custom_objects()['Sequential'] = Sequential
+
             try:
-                model = model_from_config(cleaned_config)
-                print(f"✅ Legacy model successfully deserialized from {path}")
+                model = model_from_json(json.dumps(cleaned_config))
+                print(f" Legacy model successfully deserialized from {path}")
                 return model
             except Exception as inner_e:
-                print(f"❌ Legacy deserialization failed: {inner_e}")
+                print(f" Legacy deserialization failed: {inner_e}")
                 raise inner_e
 
 
+
+
+
 # ------------------------------------------------------------
-# ⚙️ Load trained models & scalers safely
+#  Load trained models & scalers safely
 # ------------------------------------------------------------
 pressure_model = safe_load_model("pressure_model_new.h5")
 limit_model = safe_load_model("limit_switch_model_new.h5")
@@ -88,7 +102,7 @@ TOTAL_READINGS = 50
 sensor_history = {}
 
 # ------------------------------------------------------------
-# 🚨 Status helper
+#  Status helper
 # ------------------------------------------------------------
 def get_status(value: float) -> str:
     if value < 4:
@@ -99,7 +113,7 @@ def get_status(value: float) -> str:
         return "NORMAL"
 
 # ------------------------------------------------------------
-# 🤖 Prediction helper
+#  Prediction helper
 # ------------------------------------------------------------
 def predict_next(sensor_id: str):
     """Predict the *next* value (i+1) after every 5 readings."""
@@ -130,7 +144,7 @@ def predict_next(sensor_id: str):
     return None
 
 # ------------------------------------------------------------
-# 📤 Data simulation
+#  Data simulation
 # ------------------------------------------------------------
 def simulate_sensor_data():
     t = time.time()
@@ -149,12 +163,12 @@ def simulate_sensor_data():
     return data
 
 # ------------------------------------------------------------
-# 🔄 Send to Firebase
+#  Send to Firebase
 # ------------------------------------------------------------
 def send_to_firebase(read_num):
     timestamp = time.strftime("%H:%M:%S")
     data = simulate_sensor_data()
-    print(f"\n✅ Reading {read_num}/{TOTAL_READINGS} @ {timestamp}")
+    print(f"\n Reading {read_num}/{TOTAL_READINGS} @ {timestamp}")
 
     for sensor_id, value in data.items():
         if sensor_id not in sensor_history:
@@ -167,7 +181,7 @@ def send_to_firebase(read_num):
 
         ref = db.reference(f"sensors/{sensor_id}")
 
-        # 🔢 Track alert counts
+        #  Track alert counts
         if "alert_counter" not in sensor_history:
             sensor_history["alert_counter"] = {}
 
@@ -192,11 +206,11 @@ def send_to_firebase(read_num):
             cfg_ref.set({"active": True})
 
 # ------------------------------------------------------------
-# 🚀 Main loop (run exactly 50 readings)
+#  Main loop (run exactly 50 readings)
 # ------------------------------------------------------------
 if __name__ == "__main__":
-    print("🚀 Starting 50-reading data stream...\n")
+    print(" Starting 50-reading data stream...\n")
     for i in range(1, TOTAL_READINGS + 1):
         send_to_firebase(i)
         time.sleep(1.5)
-    print("\n✅ Completed 50 readings successfully! Stopping program.")
+    print("\n Completed 50 readings successfully! Stopping program.")
